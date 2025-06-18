@@ -1,14 +1,14 @@
 import sys
 import time
 import threading
+import rospy
 
 sys.path.append('gen_py')
 sys.path.append('lib')
 from DucoCobot import DucoCobot
 from thrift import Thrift
 from ManualControl import system_control
-
-
+from std_msgs.msg import Float64MultiArray
 
 class DemoApp:
     def __init__(self, ip):
@@ -18,6 +18,7 @@ class DemoApp:
         self.hearthread = threading.Thread(target=self.hearthread_fun)
         self.thread = threading.Thread(target=self.thread_fun)
         self.tcp_state = []  
+        self.tcp_pub = rospy.Publisher('/Duco_state', Float64MultiArray, queue_size=10)
 
     def robot_connect(self):
         rlt = self.duco_cobot.open()
@@ -43,14 +44,17 @@ class DemoApp:
             tcp_state = []
             tcp_state = self.duco_thread.get_robot_state()
             self.tcp_state = tcp_state
-            print("state: ", tcp_state)
-            time.sleep(1)
+            # 发布 ROS topic
+            msg = Float64MultiArray()
+            msg.data = tcp_state
+            self.tcp_pub.publish(msg)
         self.duco_thread.close()
 
     def run(self):
         self.robot_connect()
         self.hearthread.start()
         self.thread.start()
+        rospy.init_node('Duco_state_publisher', anonymous=True)
 
         try:
             system_control(self.ip, self.duco_cobot, self).run()

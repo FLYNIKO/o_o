@@ -6,6 +6,7 @@ from DucoCobot import DucoCobot
 from s21c_receive_data.msg import STP23
 from key_input_pkg.msg import KeyInput
 from CylinderPaint_duco import CylinderAutoPaint
+from std_msgs.msg import Float64MultiArray
 
 
 # 传感器防撞阈值，若阈值为0则不开启防撞
