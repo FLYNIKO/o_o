@@ -9,7 +9,7 @@ from CylinderPaint_duco import CylinderAutoPaint
 
 # 传感器防撞阈值，若阈值为0则不开启防撞
 ANTICRASH_UP = 0
-ANTICRASH_FRONT = 0
+ANTICRASH_FRONT = 500 #同时用作喷涂距离
 ANTICRASH_LEFT = 50
 ANTICRASH_RIGHT = 0
 
@@ -53,7 +53,6 @@ class system_control:
     def __init__(self, duco_cobot, app=None):
         self.duco_cobot = duco_cobot
         self.app = app
-        self.axis_threshold = 0.5 #摇杆阈值
         self.vel = 0.1 # 机械臂末端速度
         self.acc = 1.0 # 机械臂末端加速度
         self.aj_pos = [] # 当前关节角度
@@ -62,13 +61,12 @@ class system_control:
         self.sysrun = True
         self.init_pos = [0.41, 0.18, 1, -1.57, 0.0, -1.57] # 初始位置
         self.serv_pos = [0.41, 0.18, 1, -1.57, 0.0, -1.57] # 维修位置
-        self.duco_cobot.switch_mode(1)
-        self.pid = SimplePID(kp=2, ki=0.0, kd=0.2)
+        self.pid = SimplePID(kp=1, ki=0.0, kd=0.2)
         self.pid_z = SimplePID(kp=2, ki=0.0, kd=0.2)
 
         self.painting_deg = 90 # 喷涂角度
         self.theta_deg = self.painting_deg / 2  # 喷涂角度的一半
-        self.distance_to_cylinder = 0.5  # 末端与圆柱表面距离
+        self.distance_to_cylinder = ANTICRASH_FRONT  # 末端与圆柱表面距离
         self.painting_width = 0.15  # 喷涂宽度
 
         self.emergency_stop_flag = False
@@ -80,13 +78,14 @@ class system_control:
         self.sensor_subscriber = rospy.Subscriber('/STP23', STP23, self._sensor_callback)
         self.latest_keys = [0] * 8
         self.keys_subscriber = rospy.Subscriber('/key_input', KeyInput, self._keys_callback)
-
+    
+    # 急停线程
     def emergency_stop_thread(self):
         while self.sysrun:
             key_input = self.get_key_input()
             if key_input.multi:
                 print("检测到紧急停止按键，正在执行紧急停止！")
-                self.duco_cobot.speed_stop(True)
+                self.duco_cobot.stop(True)
                 self.duco_cobot.disable(False)
                 self.sysrun = False
                 break
@@ -210,66 +209,66 @@ class system_control:
                             self.duco_cobot.speed_stop(True)
                             print("Timeout.")
                             break
-                    
-                elif key_input.x0: #机械臂末端向  前
+                #机械臂末端向  前
+                elif key_input.x0:
                     if ANTICRASH_FRONT != 0 and sensor_data["front"] < ANTICRASH_FRONT:
                         v2 = 0
                         print("向前移动被防撞保护禁止,front传感器值:", sensor_data.get("front"))
                     self.duco_cobot.speedl([0, 0, v2, 0, 0, 0],self.acc ,-1, False)
-
-                elif key_input.x1: #机械臂末端向  后
+                #机械臂末端向  后
+                elif key_input.x1:
                     self.duco_cobot.speedl([0, 0, -v2, 0, 0, 0],self.acc ,-1, False)
-
-                elif key_input.y1: #机械臂末端向  右
+                #机械臂末端向  右
+                elif key_input.y1:
                     if ANTICRASH_RIGHT != 0 and sensor_data["right"] < ANTICRASH_RIGHT:
                         v0 = 0
                         print("向右移动被防撞保护禁止,right传感器值:", sensor_data.get("right"))
                     self.duco_cobot.speedl([v0, 0, 0, 0, 0, 0], self.acc, -1, False)
-
-                elif key_input.y0: #机械臂末端向  左
+                #机械臂末端向  左
+                elif key_input.y0: 
                     if ANTICRASH_LEFT != 0 and sensor_data["left"] < ANTICRASH_LEFT:
                         v0 = 0
                         print("向左移动被防撞保护禁止,left传感器值:", sensor_data.get("left"))
                     self.duco_cobot.speedl([-v0, 0, 0, 0, 0, 0], self.acc, -1, False)
-
-                elif key_input.z1: #机械臂末端向  上
+                #机械臂末端向  上
+                elif key_input.z1: 
                     if ANTICRASH_UP != 0 and sensor_data["up"] < ANTICRASH_UP:
                         v1 = 0
                         print("向上移动被防撞保护禁止,up传感器值:", sensor_data.get("up"))
                     self.duco_cobot.speedl([0, v1, 0, 0, 0, 0],self.acc ,-1, False)
-
-                elif key_input.z0: #机械臂末端向  下
+                #机械臂末端向  下
+                elif key_input.z0:
                     self.duco_cobot.speedl([0, -v1, 0, 0, 0, 0],self.acc ,-1, False)
-
-                elif key_input.init: #初始化位置
+                #初始化位置
+                elif key_input.init:
                     self.duco_cobot.servoj_pose(self.init_pos, self.vel, self.acc, '', '', '', True)
                     print("move to initial position: %s" % self.init_pos)
-
-                elif key_input.serv: #维修位置
+                #维修位置
+                elif key_input.serv:
                     self.duco_cobot.servoj_pose(self.serv_pos, self.vel, self.acc, '', '', '', True)
                     print("move to service position: %s" % self.serv_pos)
-
-                elif key_input.rx0: #机械臂末端转  pitch上
+                #机械臂末端转  pitch上
+                elif key_input.rx0: 
                     self.duco_cobot.speedl([0, 0, 0, 0, 0, v5], self.acc, -1, False)
                     time.sleep(0.05)
-                    
-                elif key_input.rx1: #机械臂末端转  pitch下
+                #机械臂末端转  pitch下
+                elif key_input.rx1: 
                     self.duco_cobot.speedl([0, 0, 0, 0, 0, -v5], self.acc, -1, False)
                     time.sleep(0.05)
-
-                elif key_input.ry0: #机械臂末端转  roll左
+                #机械臂末端转  roll左
+                elif key_input.ry0: 
                     self.duco_cobot.speedl([0, 0, 0, v3, 0, 0], self.acc, -1, False)
-
-                elif key_input.ry1: #机械臂末端转  roll右
+                #机械臂末端转  roll右
+                elif key_input.ry1: 
                     self.duco_cobot.speedl([0, 0, 0, -v3, 0, 0], self.acc, -1, False)
-
-                elif key_input.rz0: #机械臂末端转  yaw左
+                #机械臂末端转  yaw左
+                elif key_input.rz0: 
                     self.duco_cobot.speedl([0, 0, 0, 0, v4, 0], self.acc, -1, False)
-
-                elif key_input.rz1: #机械臂末端转  yaw右
+                #机械臂末端转  yaw右
+                elif key_input.rz1: 
                     self.duco_cobot.speedl([0, 0, 0, 0, -v4, 0], self.acc, -1, False)
 
-                # TODO
+                # TODO 圆柱喷涂
                 # elif btn_y:
                 #     self.duco_cobot.switch_mode(1)
                 #     auto_painter = CylinderAutoPaint(self.duco_cobot, self.init_pos, self.theta_deg, self.distance_to_cylinder, self.painting_width, self.vel, self.acc)

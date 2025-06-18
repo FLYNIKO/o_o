@@ -26,6 +26,7 @@ class DemoApp:
         print("power_on:", rlt)
         rlt = self.duco_cobot.enable(True)
         print("enable:", rlt)
+        self.duco_cobot.switch_mode(1)
 
     def hearthread_fun(self):
         self.duco_heartbeat = DucoCobot(self.ip, 7003)
