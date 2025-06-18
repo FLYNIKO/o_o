@@ -171,8 +171,9 @@ class system_control:
         print("move to initial position: %s" % self.init_pos)
         time.sleep(1)
 
-        while self.sysrun:
-            try:
+        
+        try:
+            while self.sysrun:
                 key_input = self.get_key_input()
                 sensor_data = self.get_sensor_data()
                 self.duco_cobot.switch_mode(1)
@@ -287,12 +288,11 @@ class system_control:
                 else:
                     self.duco_cobot.speed_stop(False)
             
-            except Exception as e:
-                print(f"An unexpected error occurred: {e}")
-                break
-            except KeyboardInterrupt:
-                print("KeyboardInterrupt")
-                self.sysrun = False
-                break
+        except Exception as e:
+            print(f"An unexpected error occurred: {e}")
 
-        self.emergency_thread.join()
+        except KeyboardInterrupt:
+            print("KeyboardInterrupt")
+            self.sysrun = False
+        finally:
+            self.emergency_thread.join()

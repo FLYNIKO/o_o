@@ -76,4 +76,13 @@ if __name__ == '__main__':
     # app = DemoApp('192.168.0.18')
     rospy.init_node('Duco_state_publisher', anonymous=True)
     app = DemoApp('192.168.100.10')
-    app.main()
+    try:
+        app.main()
+    except KeyboardInterrupt:
+        print("主程序收到 KeyboardInterrupt，准备退出。")
+        app.stopheartthread = True
+        time.sleep(1)
+        app.hearthread.join()
+        app.thread.join()
+        rlt = app.duco_cobot.close()
+        print("close:", rlt)
