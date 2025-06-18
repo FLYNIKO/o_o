@@ -1,0 +1,287 @@
+import time
+import rospy
+import threading
+
+from s21c_receive_data.msg import STP23
+from key_input_pkg.msg import KeyInput
+from CylinderPaint_duco import CylinderAutoPaint
+
+
+# 传感器防撞阈值，若阈值为0则不开启防撞
+ANTICRASH_UP = 0
+ANTICRASH_FRONT = 0
+ANTICRASH_LEFT = 50
+ANTICRASH_RIGHT = 0
+
+class KeyInputStruct:
+    def __init__(self, x0=0, x1=0, y0=0, y1=0, z0=0, z1=0,
+                 init=0, serv=0, multi=0, start=0,
+                 rx0=0, rx1=0, ry0=0, ry1=0, rz0=0, rz1=0):
+        self.x0 = x0
+        self.x1 = x1
+        self.y0 = y0
+        self.y1 = y1
+        self.z0 = z0
+        self.z1 = z1
+        self.init = init
+        self.serv = serv
+        self.multi = multi
+        self.start = start
+        self.rx0 = rx0
+        self.rx1 = rx1
+        self.ry0 = ry0
+        self.ry1 = ry1
+        self.rz0 = rz0
+        self.rz1 = rz1
+
+class SimplePID:
+    def __init__(self, kp, ki, kd):
+        self.kp = kp
+        self.ki = ki
+        self.kd = kd
+        self.integral = 0.0
+        self.prev_error = 0.0
+
+    def compute(self, target, current, dt):
+        error = target - current
+        self.integral += error * dt
+        derivative = (error - self.prev_error) / dt if dt > 0 else 0
+        self.prev_error = error
+        return self.kp * error + self.ki * self.integral + self.kd * derivative
+
+class system_control:
+    def __init__(self, duco_cobot, app=None):
+        self.duco_cobot = duco_cobot
+        self.app = app
+        self.axis_threshold = 0.5 #摇杆阈值
+        self.vel = 0.1 # 机械臂末端速度
+        self.acc = 1.0 # 机械臂末端加速度
+        self.aj_pos = [] # 当前关节角度
+        self.tcp_pos = [] # 当前末端位姿
+        self.history_pos = [] # 历史位置
+        self.sysrun = True
+        self.init_pos = [0.41, 0.18, 1, -1.57, 0.0, -1.57] # 初始位置
+        self.serv_pos = [0.41, 0.18, 1, -1.57, 0.0, -1.57] # 维修位置
+        self.duco_cobot.switch_mode(1)
+        self.pid = SimplePID(kp=2, ki=0.0, kd=0.2)
+        self.pid_z = SimplePID(kp=2, ki=0.0, kd=0.2)
+
+        self.painting_deg = 90 # 喷涂角度
+        self.theta_deg = self.painting_deg / 2  # 喷涂角度的一半
+        self.distance_to_cylinder = 0.5  # 末端与圆柱表面距离
+        self.painting_width = 0.15  # 喷涂宽度
+
+        self.emergency_stop_flag = False
+        self.emergency_thread = threading.Thread(target=self.emergency_stop_thread, daemon=True)
+        self.emergency_thread.start()
+
+        rospy.init_node('robot_controller_node', anonymous=True)
+        self.latest_sensor_data = {"up": -1, "front": -1, "left_side": -1, "right_side": -1}
+        self.sensor_subscriber = rospy.Subscriber('/STP23', STP23, self._sensor_callback)
+        self.latest_keys = [0] * 8
+        self.keys_subscriber = rospy.Subscriber('/key_input', KeyInput, self._keys_callback)
+
+    def emergency_stop_thread(self):
+        while self.sysrun:
+            key_input = self.get_key_input()
+            if key_input.multi:
+                print("检测到紧急停止按键，正在执行紧急停止！")
+                self.duco_cobot.speed_stop(True)
+                self.duco_cobot.disable(False)
+                self.sysrun = False
+                break
+            time.sleep(0.05)
+
+    def get_tcp_state(self):
+        if self.app:
+            return self.app.tcp_state
+        return []
+
+    def get_cylinder_param(self):
+        # TODO: 获取圆柱圆心坐标及圆柱半径
+        cx, cy, cz = 1.8, 0.3, 1.2   # 圆心坐标
+        cy_radius = 0.5               # 圆柱半径
+        return cx, cy, cz, cy_radius
+    
+    # 读取/topic中的按键输入
+    def _keys_callback(self, msg):
+        self.latest_keys = list(msg.keys)
+
+    def get_key_input(self):
+        keys = self.latest_keys
+        keys_padded = (keys + [0]*16)[:16]
+        return KeyInputStruct(*keys_padded)
+    
+    # 读取/topic中的传感器数据
+    def _sensor_callback(self, msg):
+        self.latest_sensor_data = {
+            "up": msg.Distance_1,
+            "front": msg.Distance_2,
+            "left": msg.Distance_3,
+            "right": msg.Distance_4
+        }
+
+    def get_sensor_data(self):
+        return self.latest_sensor_data
+    
+    # 记录当前位置
+    def get_replay_pos(self, tcp_pos, history_pos=None):
+        history_pos.append(tcp_pos)
+        print("new position: %s counter: %d" % (tcp_pos, len(history_pos)))
+        time.sleep(0.5)
+
+    # 回放历史位置
+    def position_replay(self, tcp_pos, history_pos=None):
+        for tcp_pos in history_pos:
+            try:
+                index = history_pos.index(tcp_pos) + 1
+                task_id = self.duco_cobot.movel(tcp_pos, self.vel, self.acc, 0, '', '', '', False)
+                print("move to no.%d position: %s" % (index, tcp_pos))
+                cur_time = time.time()
+                while self.duco_cobot.get_noneblock_taskstate(task_id) != 4:
+                    if time.time() - cur_time > 10:
+                        print("Timeout.Move to no.%d position failed." % index)
+                        break
+                    
+                    if self.duco_cobot.get_noneblock_taskstate(task_id) == 4:
+                        break
+                                
+            except ValueError:
+                print("Position %s not found in history." % tcp_pos)
+        # 回到起始位置
+        if len(history_pos) > 1:
+            self.duco_cobot.movel(history_pos[0], self.vel, self.acc, 0, '', '', '', False)
+            print("move to no.1 position: %s" % history_pos[0])
+        # 无点位可回放
+        elif len(history_pos) == 0:
+            print("No position in history.Press LB to record position.")
+            time.sleep(0.5)
+    
+    def run(self):
+        print("waiting for robot initialization...")
+        # self.duco_cobot.movej2(self.init_pos, 2*self.vel, self.acc, 0, True)
+        self.duco_cobot.servoj_pose(self.init_pos, self.vel, self.acc, '', '', '', False)
+        print("move to initial position: %s" % self.init_pos)
+        time.sleep(1)
+
+        while self.sysrun:
+            try:
+                key_input = self.get_key_input()
+                sensor_data = self.get_sensor_data()
+                self.duco_cobot.switch_mode(1)
+
+                v0 = self.vel                # arm left-/right+
+                v1 = self.vel                # arm up+/down-
+                v2 = self.vel                # arm forward+/backward-
+                v3 = -self.vel * 2           # arm head up+/down-
+                v4 = self.vel * 2            # arm head left+/right-
+                v5 = self.vel * 2            # arm head rotate left-/right+
+                
+                #自动喷涂
+                if key_input.start:
+                    v2 = 0.0  # 初始化前后速度
+                    task_id = self.duco_cobot.speedl([-v0, 0, v2, 0, 0, 0], self.acc, -1, False)
+                    cur_time = time.time()
+                    last_time = cur_time
+                
+                    while self.duco_cobot.get_noneblock_taskstate(task_id) != 4:
+                        sensor_data = self.get_sensor_data()
+                        tcp_pos = self.duco_cobot.get_tcp_pose()
+                        print("current position: %s" % tcp_pos)
+                        now = time.time()
+                        dt = now - last_time
+                        last_time = now
+                
+                        if (ANTICRASH_LEFT != 0 and sensor_data["left"] < ANTICRASH_LEFT) or tcp_pos[1] > 1:
+                            self.duco_cobot.speed_stop(True)
+                            break
+
+                        elif ANTICRASH_FRONT != 0:
+                            front_dist = sensor_data["front"]
+                            target_dist = ANTICRASH_FRONT
+                            v2 = self.pid_z.compute(target_dist, front_dist, dt)
+                            v2 = max(min(v2, 0.2), -0.2)
+                            self.duco_cobot.speedl([-v0, 0, v2, 0, 0, 0], self.acc, -1, False)
+                        else:
+                            v2 = 0
+                            task_id = self.duco_cobot.speedl([-v0, 0, v2, 0, 0, 0], self.acc, -1, False)
+
+                        if now - cur_time > 100:
+                            self.duco_cobot.speed_stop(True)
+                            print("Timeout.")
+                            break
+                    
+                elif key_input.x0: #机械臂末端向  前
+                    if ANTICRASH_FRONT != 0 and sensor_data["front"] < ANTICRASH_FRONT:
+                        v2 = 0
+                        print("向前移动被防撞保护禁止,front传感器值:", sensor_data.get("front"))
+                    self.duco_cobot.speedl([0, 0, v2, 0, 0, 0],self.acc ,-1, False)
+
+                elif key_input.x1: #机械臂末端向  后
+                    self.duco_cobot.speedl([0, 0, -v2, 0, 0, 0],self.acc ,-1, False)
+
+                elif key_input.y1: #机械臂末端向  右
+                    if ANTICRASH_RIGHT != 0 and sensor_data["right"] < ANTICRASH_RIGHT:
+                        v0 = 0
+                        print("向右移动被防撞保护禁止,right传感器值:", sensor_data.get("right"))
+                    self.duco_cobot.speedl([v0, 0, 0, 0, 0, 0], self.acc, -1, False)
+
+                elif key_input.y0: #机械臂末端向  左
+                    if ANTICRASH_LEFT != 0 and sensor_data["left"] < ANTICRASH_LEFT:
+                        v0 = 0
+                        print("向左移动被防撞保护禁止,left传感器值:", sensor_data.get("left"))
+                    self.duco_cobot.speedl([-v0, 0, 0, 0, 0, 0], self.acc, -1, False)
+
+                elif key_input.z1: #机械臂末端向  上
+                    if ANTICRASH_UP != 0 and sensor_data["up"] < ANTICRASH_UP:
+                        v1 = 0
+                        print("向上移动被防撞保护禁止,up传感器值:", sensor_data.get("up"))
+                    self.duco_cobot.speedl([0, v1, 0, 0, 0, 0],self.acc ,-1, False)
+
+                elif key_input.z0: #机械臂末端向  下
+                    self.duco_cobot.speedl([0, -v1, 0, 0, 0, 0],self.acc ,-1, False)
+
+                elif key_input.init: #初始化位置
+                    self.duco_cobot.servoj_pose(self.init_pos, self.vel, self.acc, '', '', '', True)
+                    print("move to initial position: %s" % self.init_pos)
+
+                elif key_input.serv: #维修位置
+                    self.duco_cobot.servoj_pose(self.serv_pos, self.vel, self.acc, '', '', '', True)
+                    print("move to service position: %s" % self.serv_pos)
+
+                elif key_input.rx0: #机械臂末端转  pitch上
+                    self.duco_cobot.speedl([0, 0, 0, 0, 0, v5], self.acc, -1, False)
+                    time.sleep(0.05)
+                    
+                elif key_input.rx1: #机械臂末端转  pitch下
+                    self.duco_cobot.speedl([0, 0, 0, 0, 0, -v5], self.acc, -1, False)
+                    time.sleep(0.05)
+
+                elif key_input.ry0: #机械臂末端转  roll左
+                    self.duco_cobot.speedl([0, 0, 0, v3, 0, 0], self.acc, -1, False)
+
+                elif key_input.ry1: #机械臂末端转  roll右
+                    self.duco_cobot.speedl([0, 0, 0, -v3, 0, 0], self.acc, -1, False)
+
+                elif key_input.rz0: #机械臂末端转  yaw左
+                    self.duco_cobot.speedl([0, 0, 0, 0, v4, 0], self.acc, -1, False)
+
+                elif key_input.rz1: #机械臂末端转  yaw右
+                    self.duco_cobot.speedl([0, 0, 0, 0, -v4, 0], self.acc, -1, False)
+
+                # TODO
+                # elif btn_y:
+                #     self.duco_cobot.switch_mode(1)
+                #     auto_painter = CylinderAutoPaint(self.duco_cobot, self.init_pos, self.theta_deg, self.distance_to_cylinder, self.painting_width, self.vel, self.acc)
+                #     auto_painter.auto_paint()
+
+                else:
+                    self.duco_cobot.speed_stop(False)
+            
+            except Exception as e:
+                print(f"An unexpected error occurred: {e}")
+                break
+            except KeyboardInterrupt:
+                print("KeyboardInterrupt")
+                self.sysrun = False
+                break
