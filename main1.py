@@ -71,7 +71,6 @@ class DemoApp:
         except Thrift.TException as tx:
             print('%s' % tx.message)
 
-
 if __name__ == '__main__':
     # app = DemoApp('192.168.0.18')
     rospy.init_node('Duco_state_publisher', anonymous=True)
