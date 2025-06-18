@@ -10,8 +10,8 @@ from CylinderPaint_duco import CylinderAutoPaint
 
 # 传感器防撞阈值，若阈值为0则不开启防撞
 ANTICRASH_UP = 0
-ANTICRASH_FRONT = 500 #同时用作喷涂距离
-ANTICRASH_LEFT = 50
+ANTICRASH_FRONT = 600 #同时用作喷涂距离
+ANTICRASH_LEFT = 0
 ANTICRASH_RIGHT = 0
 
 class KeyInputStruct:
@@ -44,7 +44,7 @@ class SimplePID:
         self.prev_error = 0.0
 
     def compute(self, target, current, dt):
-        error = target - current
+        error = current - target
         self.integral += error * dt
         derivative = (error - self.prev_error) / dt if dt > 0 else 0
         self.prev_error = error
@@ -55,16 +55,18 @@ class system_control:
         self.ip = ip
         self.duco_cobot = duco_cobot
         self.app = app
-        self.vel = 0.1 # 机械臂末端速度
-        self.acc = 1.0 # 机械臂末端加速度
+        self.auto_vel = 0.1 # 自动喷涂速度
+        self.vel = 0.5 # 机械臂末端速度
+        self.acc = 1.2 # 机械臂末端加速度
         self.aj_pos = [] # 当前关节角度
         self.tcp_pos = [] # 当前末端位姿
         self.history_pos = [] # 历史位置
         self.sysrun = True
+        self.autopaint_flag = True
         self.init_pos = [0.41, 0.18, 1, -1.57, 0.0, -1.57] # 初始位置
-        self.serv_pos = [0.41, 0.18, 1, -1.57, 0.0, -1.57] # 维修位置
+        self.serv_pos = [1.22, -0.81, 1, -1.57, 0.0, -1.57] # 维修位置
         self.pid = SimplePID(kp=1, ki=0.0, kd=0.2)
-        self.pid_z = SimplePID(kp=2, ki=0.0, kd=0.2)
+        self.pid_z = SimplePID(kp=0.3, ki=0.0, kd=0.02)
 
         self.painting_deg = 90 # 喷涂角度
         self.theta_deg = self.painting_deg / 2  # 喷涂角度的一半
@@ -84,13 +86,15 @@ class system_control:
     # 急停线程
     def emergency_stop_thread(self):
         self.duco_stop = DucoCobot(self.ip, 7003)
+        self.duco_stop.open()
         while self.sysrun:
             key_input = self.get_key_input()
             if key_input.multi:
                 print("检测到紧急停止按键，正在执行紧急停止！")
+                self.autopaint_flag = False
                 self.duco_stop.stop(True)
                 self.duco_stop.disable(False)
-                self.sysrun = False
+                self.sysrun = False                
                 break
             time.sleep(0.05)
 
@@ -172,12 +176,12 @@ class system_control:
                 sensor_data = self.get_sensor_data()
                 self.duco_cobot.switch_mode(1)
 
-                v0 = self.vel                # arm left-/right+
-                v1 = self.vel                # arm up+/down-
-                v2 = self.vel                # arm forward+/backward-
-                v3 = -self.vel * 2           # arm head up+/down-
-                v4 = self.vel * 2            # arm head left+/right-
-                v5 = self.vel * 2            # arm head rotate left-/right+
+                v0 = self.auto_vel                # arm left-/right+
+                v1 = self.auto_vel                 # arm up+/down-
+                v2 = self.auto_vel                 # arm forward+/backward-
+                v3 = -self.auto_vel * 2           # arm head up+/down-
+                v4 = self.auto_vel  * 2            # arm head left+/right-
+                v5 = self.auto_vel  * 2            # arm head rotate left-/right+
                 
                 #自动喷涂
                 if key_input.start:
@@ -186,28 +190,28 @@ class system_control:
                     cur_time = time.time()
                     last_time = cur_time
                 
-                    while self.duco_cobot.get_noneblock_taskstate(task_id) != 4:
+                    while self.autopaint_flag:
                         sensor_data = self.get_sensor_data()
                         tcp_pos = self.duco_cobot.get_tcp_pose()
                         print("current position: %s" % tcp_pos)
                         now = time.time()
                         dt = now - last_time
                         last_time = now
-                
+                        # 防撞保护
                         if (ANTICRASH_LEFT != 0 and sensor_data["left"] < ANTICRASH_LEFT) or tcp_pos[1] > 1:
                             print("anti1")
                             self.duco_cobot.speed_stop(True)
                             break
-
+                        # PID
                         elif ANTICRASH_FRONT != 0:
                             front_dist = sensor_data["front"]
                             target_dist = ANTICRASH_FRONT
                             v2 = self.pid_z.compute(target_dist, front_dist, dt)
-                            v2 = max(min(v2, 0.2), -0.2)
-                            self.duco_cobot.speedl([-v0, 0, v2, 0, 0, 0], self.acc, -1, False)
+                            v2 = max(min(v2, 0.1), -0.1)
                         else:
                             v2 = 0
-                            task_id = self.duco_cobot.speedl([-v0, 0, v2, 0, 0, 0], self.acc, -1, False)
+                        
+                        task_id = self.duco_cobot.speedl([-v0, 0, v2, 0, 0, 0], self.acc, -1, False)
 
                         if now - cur_time > 100:
                             self.duco_cobot.speed_stop(True)
