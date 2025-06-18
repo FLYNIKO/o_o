@@ -1,6 +1,7 @@
 import time
 import rospy
 import threading
+from DucoCobot import DucoCobot
 
 from s21c_receive_data.msg import STP23
 from key_input_pkg.msg import KeyInput
@@ -50,7 +51,8 @@ class SimplePID:
         return self.kp * error + self.ki * self.integral + self.kd * derivative
 
 class system_control:
-    def __init__(self, duco_cobot, app=None):
+    def __init__(self,ip, duco_cobot, app=None):
+        self.ip = ip
         self.duco_cobot = duco_cobot
         self.app = app
         self.vel = 0.1 # 机械臂末端速度
@@ -69,24 +71,25 @@ class system_control:
         self.distance_to_cylinder = ANTICRASH_FRONT  # 末端与圆柱表面距离
         self.painting_width = 0.15  # 喷涂宽度
 
-        self.emergency_stop_flag = False
-        self.emergency_thread = threading.Thread(target=self.emergency_stop_thread, daemon=True)
-        self.emergency_thread.start()
-
         rospy.init_node('robot_controller_node', anonymous=True)
         self.latest_sensor_data = {"up": -1, "front": -1, "left_side": -1, "right_side": -1}
         self.sensor_subscriber = rospy.Subscriber('/STP23', STP23, self._sensor_callback)
-        self.latest_keys = [0] * 8
+        self.latest_keys = [0] * 20
         self.keys_subscriber = rospy.Subscriber('/key_input', KeyInput, self._keys_callback)
+
+        self.emergency_stop_flag = False
+        self.emergency_thread = threading.Thread(target=self.emergency_stop_thread, daemon=True)
+        self.emergency_thread.start()
     
     # 急停线程
     def emergency_stop_thread(self):
+        self.duco_stop = DucoCobot(self.ip, 7003)
         while self.sysrun:
             key_input = self.get_key_input()
             if key_input.multi:
                 print("检测到紧急停止按键，正在执行紧急停止！")
-                self.duco_cobot.stop(True)
-                self.duco_cobot.disable(False)
+                self.duco_stop.stop(True)
+                self.duco_stop.disable(False)
                 self.sysrun = False
                 break
             time.sleep(0.05)
@@ -192,6 +195,7 @@ class system_control:
                         last_time = now
                 
                         if (ANTICRASH_LEFT != 0 and sensor_data["left"] < ANTICRASH_LEFT) or tcp_pos[1] > 1:
+                            print("anti1")
                             self.duco_cobot.speed_stop(True)
                             break
 
@@ -284,3 +288,5 @@ class system_control:
                 print("KeyboardInterrupt")
                 self.sysrun = False
                 break
+
+        self.emergency_thread.join()

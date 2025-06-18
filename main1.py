@@ -53,10 +53,12 @@ class DemoApp:
         self.thread.start()
 
         try:
-            system_control(self.duco_cobot, self).run()
+            system_control(self.ip, self.duco_cobot, self).run()
         finally:
             self.stopheartthread = True
             time.sleep(1)
+            self.hearthread.join()
+            self.thread.join()
             rlt = self.duco_cobot.close()
             print("close:", rlt)
 
