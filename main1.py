@@ -54,7 +54,6 @@ class DemoApp:
         self.robot_connect()
         self.hearthread.start()
         self.thread.start()
-        rospy.init_node('Duco_state_publisher', anonymous=True)
 
         try:
             system_control(self.ip, self.duco_cobot, self).run()
@@ -75,5 +74,6 @@ class DemoApp:
 
 if __name__ == '__main__':
     # app = DemoApp('192.168.0.18')
+    rospy.init_node('Duco_state_publisher', anonymous=True)
     app = DemoApp('192.168.100.10')
     app.main()

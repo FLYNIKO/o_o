@@ -74,7 +74,6 @@ class system_control:
         self.distance_to_cylinder = ANTICRASH_FRONT  # 末端与圆柱表面距离
         self.painting_width = 0.15  # 喷涂宽度
 
-        rospy.init_node('robot_controller_node', anonymous=True)
         self.latest_sensor_data = {"up": -1, "front": -1, "left_side": -1, "right_side": -1}
         self.sensor_subscriber = rospy.Subscriber('/STP23', STP23, self._sensor_callback)
         self.latest_keys = [0] * 20
@@ -90,19 +89,20 @@ class system_control:
         self.duco_stop.open()
         while self.sysrun:
             key_input = self.get_key_input()
+            state = self.duco_stop.get_robot_state()
             if key_input.multi:
                 print("检测到紧急停止按键，正在执行紧急停止！")
                 self.autopaint_flag = False
                 self.duco_stop.stop(True)
-                self.duco_stop.disable(False)
-                self.sysrun = False                
-                break
+                if state[0] != 6:
+                    print("restart robot")
+                    if state[0] == 5:
+                        self.duco_stop.enable(True)
+                    if state[0] == 4:
+                        self.duco_stop.power_on(True)
+                        self.duco_stop.enable(True)
+                    self.duco_stop.switch_mode(1)          
             time.sleep(0.05)
-
-    def get_tcp_state(self):
-        if self.app:
-            return self.app.tcp_state
-        return []
 
     def get_cylinder_param(self):
         # TODO: 获取圆柱圆心坐标及圆柱半径
@@ -186,6 +186,7 @@ class system_control:
                 
                 #自动喷涂
                 if key_input.start:
+                    self.autopaint_flag = True
                     v2 = 0.0  # 初始化前后速度
                     task_id = self.duco_cobot.speedl([-v0, 0, v2, 0, 0, 0], self.acc, -1, False)
                     cur_time = time.time()
