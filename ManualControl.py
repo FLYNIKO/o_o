@@ -1,12 +1,13 @@
 import time
 import rospy
 import threading
-from DucoCobot import DucoCobot
 
+from DucoCobot import DucoCobot
 from s21c_receive_data.msg import STP23
 from key_input_pkg.msg import KeyInput
 from CylinderPaint_duco import CylinderAutoPaint
 from std_msgs.msg import Float64MultiArray
+from collections import deque
 
 
 # 传感器防撞阈值，若阈值为0则不开启防撞
@@ -68,6 +69,7 @@ class system_control:
         self.serv_pos = [1.22, -0.81, 1, -1.57, 0.0, -1.57] # 维修位置
         self.pid = SimplePID(kp=1, ki=0.0, kd=0.2)
         self.pid_z = SimplePID(kp=0.3, ki=0.0, kd=0.02)
+        self.front_sensor_history = deque(maxlen=10) # 存储最近5次数值
 
         self.painting_deg = 90 # 喷涂角度
         self.theta_deg = self.painting_deg / 2  # 喷涂角度的一半
@@ -203,10 +205,18 @@ class system_control:
                     while self.autopaint_flag:
                         sensor_data = self.get_sensor_data()
                         tcp_pos = self.duco_cobot.get_tcp_pose()
+                        raw_front_dist = sensor_data["front"] 
                         print("current position: %s" % tcp_pos)
                         now = time.time()
                         dt = now - last_time
                         last_time = now
+
+                        # 滑动平均滤波
+                        self.front_sensor_history.append(raw_front_dist)
+                        if not self.front_sensor_history: # 避免队列为空
+                            continue 
+                        filtered_front_dist = sum(self.front_sensor_history) / len(self.front_sensor_history)
+
                         # 防撞保护
                         if (ANTICRASH_LEFT != 0 and sensor_data["left"] < ANTICRASH_LEFT) or tcp_pos[1] > 1:
                             print("anti1")
@@ -214,9 +224,8 @@ class system_control:
                             break
                         # PID
                         elif ANTICRASH_FRONT != 0:
-                            front_dist = sensor_data["front"]
                             target_dist = ANTICRASH_FRONT
-                            v2 = self.pid_z.compute(target_dist, front_dist, dt)
+                            v2 = self.pid_z.compute(target_dist, filtered_front_dist, dt) # 注意这里用了 filtered_front_dist
                             v2 = max(min(v2, 0.1), -0.1)
                         else:
                             v2 = 0
