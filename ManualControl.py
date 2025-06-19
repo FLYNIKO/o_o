@@ -93,8 +93,15 @@ class system_control:
             if key_input.multi:
                 print("检测到紧急停止按键，正在执行紧急停止！")
                 self.autopaint_flag = False
-                self.duco_stop.stop(True)
-                if state[0] != 6:
+                self.duco_stop.stop(True)                
+                if key_input.start:
+                    self.duco_stop.stop(True)
+                    self.autopaint_flag = False
+                    print("terminate robot")
+                    self.duco_stop.disable(True)
+                    self.sysrun = False
+                    break
+                elif state[0] != 6:
                     print("restart robot")
                     if state[0] == 5:
                         self.duco_stop.enable(True)
