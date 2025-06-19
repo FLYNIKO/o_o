@@ -67,7 +67,7 @@ class system_control:
         self.init_pos = [0.41, 0.18, 1, -1.57, 0.0, -1.57] # 初始位置
         self.serv_pos = [1.22, -0.81, 1, -1.57, 0.0, -1.57] # 维修位置
         self.pid = SimplePID(kp=1, ki=0.0, kd=0.2)
-        self.pid_z = SimplePID(kp=0.3, ki=0.0, kd=0.02)
+        self.pid_z = SimplePID(kp=0.01, ki=0.0, kd=0.0)
 
         self.painting_deg = 90 # 喷涂角度
         self.theta_deg = self.painting_deg / 2  # 喷涂角度的一半
@@ -203,7 +203,7 @@ class system_control:
                     while self.autopaint_flag:
                         sensor_data = self.get_sensor_data()
                         tcp_pos = self.duco_cobot.get_tcp_pose()
-                        print("current position: %s" % tcp_pos)
+                        # print("current position: %s" % tcp_pos)
                         now = time.time()
                         dt = now - last_time
                         last_time = now
@@ -220,7 +220,8 @@ class system_control:
                             v2 = max(min(v2, 0.1), -0.1)
                         else:
                             v2 = 0
-                        
+
+                        print("v2: %f" % v2)
                         task_id = self.duco_cobot.speedl([-v0, 0, v2, 0, 0, 0], self.acc, -1, False)
 
                         if now - cur_time > 100:
