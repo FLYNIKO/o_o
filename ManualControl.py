@@ -69,7 +69,7 @@ class system_control:
         self.serv_pos = [1.22, -0.81, 1, -1.57, 0.0, -1.57] # 维修位置
         self.pid = SimplePID(kp=1, ki=0.0, kd=0.2)
         self.pid_z = SimplePID(kp=0.3, ki=0.0, kd=0.02)
-        self.front_sensor_history = deque(maxlen=10) # 存储最近5次数值
+        self.front_sensor_history = deque(maxlen=5) # 存储最近5次数值
 
         self.painting_deg = 90 # 喷涂角度
         self.theta_deg = self.painting_deg / 2  # 喷涂角度的一半
@@ -197,40 +197,51 @@ class system_control:
                 #自动喷涂
                 if key_input.start:
                     self.autopaint_flag = True
+                    self.front_sensor_history.clear() 
+                    
                     v2 = 0.0  # 初始化前后速度
-                    task_id = self.duco_cobot.speedl([-v0, 0, v2, 0, 0, 0], self.acc, -1, False)
+                    self.duco_cobot.speedl([-v0, 0, v2, 0, 0, 0], self.acc, -1, False)
                     cur_time = time.time()
                     last_time = cur_time
-                
+
                     while self.autopaint_flag:
                         sensor_data = self.get_sensor_data()
                         tcp_pos = self.duco_cobot.get_tcp_pose()
-                        raw_front_dist = sensor_data["front"] 
                         print("current position: %s" % tcp_pos)
                         now = time.time()
                         dt = now - last_time
                         last_time = now
 
-                        # 滑动平均滤波
-                        self.front_sensor_history.append(raw_front_dist)
-                        if not self.front_sensor_history: # 避免队列为空
-                            continue 
-                        filtered_front_dist = sum(self.front_sensor_history) / len(self.front_sensor_history)
-
-                        # 防撞保护
+                        # 防撞保护 (左侧)
                         if (ANTICRASH_LEFT != 0 and sensor_data["left"] < ANTICRASH_LEFT) or tcp_pos[1] > 1:
                             print("anti1")
                             self.duco_cobot.speed_stop(True)
                             break
-                        # PID
-                        elif ANTICRASH_FRONT != 0:
-                            target_dist = ANTICRASH_FRONT
-                            v2 = self.pid_z.compute(target_dist, filtered_front_dist, dt) # 注意这里用了 filtered_front_dist
-                            v2 = max(min(v2, 0.1), -0.1)
-                        else:
-                            v2 = 0
                         
-                        task_id = self.duco_cobot.speedl([-v0, 0, v2, 0, 0, 0], self.acc, -1, False)
+                        # 保持喷涂距离
+                        v2 = 0.0 # 默认速度为0
+                        if ANTICRASH_FRONT != 0:
+                            # 1. 数据滤波
+                            raw_front_dist = sensor_data["front"]
+                            if raw_front_dist > 50: # 确保是有效读数
+                                self.front_sensor_history.append(raw_front_dist)
+                            
+                            if len(self.front_sensor_history) > 0:
+                                filtered_front_dist = sum(self.front_sensor_history) / len(self.front_sensor_history)
+                                
+                                # 2. 控制死区
+                                target_dist = ANTICRASH_FRONT
+                                deadband_threshold = 50  # 死区阈值
+                                error = filtered_front_dist - target_dist
+                                
+                                # 3. PID计算 (仅在死区外)
+                                if abs(error) > deadband_threshold:
+                                    v2 = self.pid_z.compute(target_dist, filtered_front_dist, dt)
+                                    # 限制最大速度
+                                    v2 = max(min(v2, 0.08), -0.08) # 建议将最大调整速度也降低一些
+
+                        # 发送最终速度指令
+                        self.duco_cobot.speedl([-v0, 0, v2, 0, 0, 0], self.acc, -1, False)
 
                         if now - cur_time > 100:
                             self.duco_cobot.speed_stop(True)
