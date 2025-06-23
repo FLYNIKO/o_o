@@ -97,10 +97,10 @@ class system_control:
                 self.duco_stop.stop(True)                
                 if key_input.start:
                     self.autopaint_flag = False
-                    self.duco_stop.stop(True)
-                    print("terminate robot")
                     self.sysrun = False
+                    self.duco_stop.stop(True)
                     self.duco_stop.disable(True)
+                    print("terminate robot")
                     break
                 elif state[0] != 6:
                     print("restart robot")
@@ -177,12 +177,12 @@ class system_control:
 
     # 自动喷涂，边走边喷
     def auto_paint_sync(self):
+        self.autopaint_flag = True
         time.sleep(0.1)  # 防止和退出冲突
         self.front_sensor_history.clear()
         v2 = 0.0  # 初始化前后速度
         cur_time = time.time()
         last_time = cur_time
-        self.autopaint_flag = True
 
         while self.autopaint_flag:
             sensor_data = self.get_sensor_data()
@@ -222,13 +222,13 @@ class system_control:
 
     # 自动喷涂，车辆不动机械臂动
     def auto_paint_interval(self):
+        self.autopaint_flag = True
         time.sleep(0.1)  # 防止和退出冲突
         self.front_sensor_history.clear()
         v0 = self.auto_vel
         v2 = 0.0  # 初始化前后速度
         cur_time = time.time()
         last_time = cur_time
-        self.autopaint_flag = True
 
         while self.autopaint_flag:
             sensor_data = self.get_sensor_data()
@@ -238,7 +238,7 @@ class system_control:
             last_time = now
             # 防撞保护
             if (ANTICRASH_LEFT != 0 and sensor_data["left"] < ANTICRASH_LEFT) or tcp_pos[1] > 1:
-                print("anti1")
+                print("jobs done")
                 self.duco_cobot.speed_stop(True)
                 break
             # PID with filter
@@ -274,7 +274,7 @@ class system_control:
     def run(self):
         print("waiting for robot initialization...")
         # self.duco_cobot.movej2(self.init_pos, 2*self.vel, self.acc, 0, True)
-        self.duco_cobot.servoj_pose(self.init_pos, self.vel, self.acc, '', '', '', False)
+        self.duco_cobot.servoj_pose(self.init_pos, self.vel, self.acc, '', '', '', True)
         print("move to initial position: %s" % self.init_pos)
         time.sleep(1)
         
@@ -294,56 +294,7 @@ class system_control:
                 #自动喷涂
                 if key_input.start:
                     # self.auto_paint_sync()
-                    # self.auto_paint_interval()
-                    time.sleep(0.1)  # 防止和退出冲突
-                    self.autopaint_flag = True
-                    self.front_sensor_history.clear() 
-                    v2 = 0.0  # 初始化前后速度
-                    self.duco_cobot.speedl([-v0, 0, v2, 0, 0, 0], self.acc, -1, False)
-                    cur_time = time.time()
-                    last_time = cur_time
-                
-                    while self.autopaint_flag:
-                        sensor_data = self.get_sensor_data()
-                        tcp_pos = self.duco_cobot.get_tcp_pose()
-                        # print("current position: %s" % tcp_pos)
-                        now = time.time()
-                        dt = now - last_time
-                        last_time = now
-                        # 防撞保护
-                        if (ANTICRASH_LEFT != 0 and sensor_data["left"] < ANTICRASH_LEFT) or tcp_pos[1] > 1:
-                            print("anti1")
-                            self.duco_cobot.speed_stop(True)
-                            break
-                        # PID with filter
-                        v2 = 0.0 # x轴默认速度为0
-                        if ANTICRASH_FRONT != 0:
-                            # 1. 数据滤波
-                            raw_front_dist = sensor_data["front"]
-                            if raw_front_dist > 0: # 确保是有效读数
-                                self.front_sensor_history.append(raw_front_dist)
-                            
-                            if len(self.front_sensor_history) > 0:
-                                filtered_front_dist = sum(self.front_sensor_history) / len(self.front_sensor_history)
-                                
-                                # 2. 控制死区
-                                target_dist = ANTICRASH_FRONT
-                                deadband_threshold = 10 # 单位: mm, 可根据实际情况调整
-                                error = filtered_front_dist - target_dist
-                                
-                                # 3. PID计算 (仅在死区外)
-                                if abs(error) > deadband_threshold:
-                                    v2 = self.pid_z.compute(target_dist, filtered_front_dist, dt)
-                                    # 限制最大速度
-                                    v2 = max(min(v2, 0.1), -0.1) # 建议将最大调整速度也降低一些
-
-                        print("v2: %f" % v2)
-                        task_id = self.duco_cobot.speedl([-v0, 0, v2, 0, 0, 0], self.acc, -1, False)
-
-                        if now - cur_time > 100:
-                            self.duco_cobot.speed_stop(True)
-                            print("Timeout.")
-                            break
+                    self.auto_paint_interval()
 
                 #机械臂末端向  前
                 elif key_input.x0:
