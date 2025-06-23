@@ -103,7 +103,7 @@ class system_control:
                         self.duco_stop.power_on(True)
                         self.duco_stop.enable(True)
                     self.duco_stop.switch_mode(1)          
-            time.sleep(0.05)
+            time.sleep(0.1)
 
     def get_cylinder_param(self):
         # TODO: 获取圆柱圆心坐标及圆柱半径
