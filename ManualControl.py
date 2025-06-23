@@ -7,13 +7,7 @@ from s21c_receive_data.msg import STP23
 from key_input_pkg.msg import KeyInput
 from CylinderPaint_duco import CylinderAutoPaint
 from collections import deque
-
-
-# 传感器防撞阈值，若阈值为0则不开启防撞
-ANTICRASH_UP = 0
-ANTICRASH_FRONT = 600 #同时用作喷涂距离
-ANTICRASH_LEFT = 0
-ANTICRASH_RIGHT = 0
+from config import *
 
 class KeyInputStruct:
     def __init__(self, x0=0, x1=0, y0=0, y1=0, z0=0, z1=0,
@@ -52,28 +46,27 @@ class SimplePID:
         return self.kp * error + self.ki * self.integral + self.kd * derivative
 
 class system_control:
-    def __init__(self,ip, duco_cobot, app=None):
-        self.ip = ip
+    def __init__(self, duco_cobot, app=None):
+        self.ip = IP
         self.duco_cobot = duco_cobot
         self.app = app
-        self.auto_vel = 0.1 # 自动喷涂速度
-        self.vel = 0.5 # 机械臂末端速度
-        self.acc = 1.2 # 机械臂末端加速度
+        self.auto_vel = AUTOSPEED # 自动喷涂速度
+        self.vel = DEFAULT_VEL # 机械臂末端速度
+        self.acc = DEFAULT_ACC # 机械臂末端加速度
         self.aj_pos = [] # 当前关节角度
         self.tcp_pos = [] # 当前末端位姿
         self.history_pos = [] # 历史位置
         self.sysrun = True
         self.autopaint_flag = True
-        self.init_pos = [0.41, 0.18, 1, -1.57, 0.0, -1.57] # 初始位置
-        self.serv_pos = [1.22, -0.81, 1, -1.57, 0.0, -1.57] # 维修位置
+        self.init_pos = INIT_POS # 初始位置
+        self.serv_pos = SERV_POS # 维修位置
         self.pid = SimplePID(kp=1, ki=0.0, kd=0.2)
-        self.pid_z = SimplePID(kp=0.005, ki=0.0, kd=0.0001)
+        self.pid_z = SimplePID(kp=KP, ki=KI, kd=KD)
         self.front_sensor_history = deque(maxlen=5) # 滤波队列
 
-        self.painting_deg = 90 # 喷涂角度
-        self.theta_deg = self.painting_deg / 2  # 喷涂角度的一半
+        self.theta_deg = PAINTDEG / 2  # 喷涂角度的一半
         self.distance_to_cylinder = ANTICRASH_FRONT  # 末端与圆柱表面距离
-        self.painting_width = 0.15  # 喷涂宽度
+        self.painting_width = PAINTWIDTH  # 喷涂宽度
 
         self.latest_sensor_data = {"up": -1, "front": -1, "left_side": -1, "right_side": -1}
         self.sensor_subscriber = rospy.Subscriber('/STP23', STP23, self._sensor_callback)
@@ -86,7 +79,7 @@ class system_control:
     
     # 急停线程
     def emergency_stop_thread(self):
-        self.duco_stop = DucoCobot(self.ip, 7003)
+        self.duco_stop = DucoCobot(self.ip, PORT)
         self.duco_stop.open()
         while self.sysrun:
             key_input = self.get_key_input()

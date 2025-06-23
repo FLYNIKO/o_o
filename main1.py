@@ -9,12 +9,13 @@ from DucoCobot import DucoCobot
 from thrift import Thrift
 from ManualControl import system_control
 from std_msgs.msg import Float64MultiArray
+from config import *
 
 class DemoApp:
-    def __init__(self, ip):
-        self.ip = ip
+    def __init__(self):
+        self.ip = IP
         self.stopheartthread = False
-        self.duco_cobot = DucoCobot(ip, 7003)
+        self.duco_cobot = DucoCobot(IP, PORT)
         self.hearthread = threading.Thread(target=self.hearthread_fun)
         self.thread = threading.Thread(target=self.thread_fun)
         self.tcp_state = []  
@@ -30,7 +31,7 @@ class DemoApp:
         self.duco_cobot.switch_mode(1)
 
     def hearthread_fun(self):
-        self.duco_heartbeat = DucoCobot(self.ip, 7003)
+        self.duco_heartbeat = DucoCobot(self.ip, PORT)
         self.duco_heartbeat.open()
         while not self.stopheartthread:
             self.duco_heartbeat.rpc_heartbeat()
@@ -38,7 +39,7 @@ class DemoApp:
         self.duco_heartbeat.close()
 
     def thread_fun(self):
-        self.duco_thread = DucoCobot(self.ip, 7003)
+        self.duco_thread = DucoCobot(self.ip, PORT)
         self.duco_thread.open()
         while not self.stopheartthread:
             tcp_state = []
@@ -72,9 +73,8 @@ class DemoApp:
             print('%s' % tx.message)
 
 if __name__ == '__main__':
-    # app = DemoApp('192.168.0.18')
     rospy.init_node('Duco_state_publisher', anonymous=True)
-    app = DemoApp('192.168.100.10')
+    app = DemoApp()
     try:
         app.main()
     except KeyboardInterrupt:
