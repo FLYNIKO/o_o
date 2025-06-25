@@ -60,6 +60,7 @@ class system_control:
         self.autopaint_flag = True
         self.init_pos = INIT_POS # 初始位置
         self.serv_pos = SERV_POS # 维修位置
+        self.safe_pos = SAFE_POS # 安全位置
         self.pid = SimplePID(kp=1, ki=0.0, kd=0.2)
         self.pid_z = SimplePID(kp=KP, ki=KI, kd=KD)
         self.front_sensor_history = deque(maxlen=5) # 滤波队列
@@ -183,6 +184,29 @@ class system_control:
             now = time.time()
             dt = now - last_time
             last_time = now
+
+            side_count = 0
+            side_count_threshold = 11 
+            while (ANTICRASH_LEFT != 0 and sensor_data["left"] < ANTICRASH_LEFT) or (ANTICRASH_RIGHT != 0 and sensor_data["right"] < ANTICRASH_RIGHT):
+                v2 = self.auto_vel * 1.5
+                self.duco_cobot.speedl([0, 0, -v2, 0, 0, 0], self.acc, -1, False)
+                time.sleep(0.05)
+                sensor_data = self.get_sensor_data()
+                side_count += 1
+                if side_count > side_count_threshold:
+                    print("可能是个梁！")
+                    default_pos = self.duco_cobot.get_tcp_pose()
+                    self.duco_cobot.servoj_pose(self.safe_pos, self.vel * 1.5, self.acc, '', '', '', True)
+                    time.sleep(0.5)
+                    sensor_data = self.get_sensor_data()
+                    # 检测是否通过梁
+                    while ANTICRASH_UP != 0 and sensor_data["up"] < ANTICRASH_UP:
+                        sensor_data = self.get_sensor_data()
+                        time.sleep(0.05)
+                    # 通过梁后，回到下降前的最后位置
+                    self.duco_cobot.servoj_pose(default_pos, self.vel, self.acc, '', '', '', True)
+                    break
+            
             # PID with filter
             v2 = 0.0  # x轴默认速度为0
             if ANTICRASH_FRONT != 0:
