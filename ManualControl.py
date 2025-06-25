@@ -196,7 +196,7 @@ class system_control:
 
                     # 2. 控制死区
                     target_dist = ANTICRASH_FRONT
-                    deadband_threshold = 10  # 单位: mm, 可根据实际情况调整
+                    deadband_threshold = DEADZONE  # 单位: mm, 可根据实际情况调整
                     error = filtered_front_dist - target_dist
 
                     # 3. PID计算 (仅在死区外)

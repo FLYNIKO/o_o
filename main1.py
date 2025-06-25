@@ -42,12 +42,12 @@ class DemoApp:
         self.duco_thread = DucoCobot(self.ip, PORT)
         self.duco_thread.open()
         while not self.stopheartthread:
-            tcp_state = []
+            tcp_pos = self.duco_cobot.get_tcp_pose()
             tcp_state = self.duco_thread.get_robot_state()
             self.tcp_state = tcp_state
             # 发布 ROS topic
             msg = Float64MultiArray()
-            msg.data = tcp_state
+            msg.data = tcp_state + tcp_pos
             self.tcp_pub.publish(msg)
         self.duco_thread.close()
 

@@ -12,9 +12,10 @@ ANTICRASH_RIGHT = 0
 AUTOSPEED = 0.3 # 自动喷涂速度
 DEFAULT_VEL = 0.3 # 机械臂末端速度
 DEFAULT_ACC = 1.2 # 机械臂末端加速度
-KP=0.005
-KI=0.0
-KD=0.0001
+KP = 0.005
+KI = 0.0
+KD = 0.0001
+DEADZONE = 30 # PID死区 (mm)
 
 PAINTDEG = 90 # 喷涂角度(圆柱)
 PAINTWIDTH = 0.15 # 喷涂宽度(圆柱)
