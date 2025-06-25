@@ -286,8 +286,8 @@ class system_control:
                 
                 #自动喷涂
                 if key_input.start:
-                    # self.auto_paint_sync()
-                    self.auto_paint_interval()
+                    self.auto_paint_sync()
+                    # self.auto_paint_interval()
 
                 #机械臂末端向  前
                 elif key_input.x0:
