@@ -186,18 +186,18 @@ class system_control:
             last_time = now
 
             side_count = 0
-            side_count_threshold = 11 
+            side_count_threshold = 5 
             while (ANTICRASH_LEFT != 0 and sensor_data["left"] < ANTICRASH_LEFT) or (ANTICRASH_RIGHT != 0 and sensor_data["right"] < ANTICRASH_RIGHT):
                 v2 = self.auto_vel * 1.5
                 self.duco_cobot.speedl([0, 0, -v2, 0, 0, 0], self.acc, -1, False)
-                time.sleep(0.05)
+                time.sleep(0.1)
                 sensor_data = self.get_sensor_data()
                 side_count += 1
                 if side_count > side_count_threshold:
                     print("可能是个梁！")
                     default_pos = self.duco_cobot.get_tcp_pose()
                     self.duco_cobot.servoj_pose(self.safe_pos, self.vel * 1.5, self.acc, '', '', '', True)
-                    time.sleep(0.5)
+                    time.sleep(0.1)
                     sensor_data = self.get_sensor_data()
                     # 检测是否通过梁
                     while ANTICRASH_UP != 0 and sensor_data["up"] < ANTICRASH_UP:
