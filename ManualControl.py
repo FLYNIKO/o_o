@@ -232,11 +232,6 @@ class system_control:
             print("v2: %f" % v2)
             self.duco_cobot.speedl([0, 0, v2, 0, 0, 0], self.acc, -1, False)
 
-            if now - cur_time > 100:
-                self.duco_cobot.speed_stop(True)
-                print("Timeout.")
-                break
-
     # 自动喷涂，车辆不动机械臂动
     def auto_paint_interval(self):
         self.autopaint_flag = True
