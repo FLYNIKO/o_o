@@ -188,9 +188,9 @@ class system_control:
             last_time = now
 
             side_count = 0
-            side_count_threshold = 5 
-            while (ANTICRASH_LEFT != 0 and sensor_data["left"] < ANTICRASH_LEFT) or (ANTICRASH_RIGHT != 0 and sensor_data["right"] < ANTICRASH_RIGHT):
-                v2 = self.auto_vel * 1.5
+            side_count_threshold = 7 
+            while ANTICRASH_LEFT != 0 and sensor_data["left"] < ANTICRASH_LEFT:
+                v2 = self.auto_vel
                 self.duco_cobot.speedl([0, 0, -v2, 0, 0, 0], self.acc, -1, False)
                 time.sleep(0.1)
                 sensor_data = self.get_sensor_data()
@@ -232,7 +232,7 @@ class system_control:
                         v2 = max(min(v2, 0.1), -0.1)  # 建议将最大调整速度也降低一些
 
             print("v2: %f" % v2)
-            self.duco_cobot.speedl([0, 0, v2, 0, 0, 0], self.acc, -1, False)
+            self.duco_cobot.speedl([0, 0, v2, 0, 0, 0], self.acc * 0.9, -1, False)
 
     # 自动喷涂，车辆不动机械臂动
     def auto_paint_interval(self):
