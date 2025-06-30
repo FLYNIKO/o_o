@@ -83,10 +83,12 @@ class system_control:
         self.duco_stop = DucoCobot(self.ip, PORT)
         self.duco_stop.open()
         while self.sysrun:
+            self.emergency_stop_flag = False
             key_input = self.get_key_input()
             state = self.duco_stop.get_robot_state()
             if key_input.multi:
                 print("检测到紧急停止按键，正在执行紧急停止！")
+                self.emergency_stop_flag = True
                 self.autopaint_flag = False
                 self.duco_stop.stop(True)                
                 if key_input.start:
@@ -305,8 +307,9 @@ class system_control:
                 
                 #自动喷涂
                 if key_input.start:
-                    self.auto_paint_sync()
-                    # self.auto_paint_interval()
+                    if not self.emergency_stop_flag:
+                        self.auto_paint_sync()
+                        # self.auto_paint_interval()
 
                 #机械臂末端向  前
                 elif key_input.x0:
