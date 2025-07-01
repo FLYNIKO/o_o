@@ -81,9 +81,10 @@ class system_control:
     
     # 急停线程
     def emergency_stop_thread(self):
+        self._stop_event = threading.Event()
         self.duco_stop = DucoCobot(self.ip, PORT)
         self.duco_stop.open()
-        while self.sysrun:
+        while self.sysrun and not rospy.is_shutdown():
             self.emergency_stop_flag = False
             key_input = self.get_key_input()
             state = self.duco_stop.get_robot_state()
@@ -107,7 +108,7 @@ class system_control:
                         self.duco_stop.power_on(True)
                         self.duco_stop.enable(True)
                     self.duco_stop.switch_mode(1)          
-            time.sleep(0.1)
+            self._stop_event.wait(0.1)
 
     def get_cylinder_param(self):
         # TODO: 获取圆柱圆心坐标及圆柱半径
@@ -298,7 +299,7 @@ class system_control:
         time.sleep(1)
         
         try:
-            while self.sysrun:
+            while self.sysrun and not rospy.is_shutdown():
                 key_input = self.get_key_input()
                 sensor_data = self.get_sensor_data()
                 self.duco_cobot.switch_mode(1)
@@ -393,5 +394,7 @@ class system_control:
             print("KeyboardInterrupt")
             self.sysrun = False
             self.autopaint_flag = False
+            return
+
         finally:
             self.emergency_thread.join()

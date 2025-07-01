@@ -31,11 +31,12 @@ class DemoApp:
         self.duco_cobot.switch_mode(1)
 
     def hearthread_fun(self):
+        self._stop_event = threading.Event()
         self.duco_heartbeat = DucoCobot(self.ip, PORT)
         self.duco_heartbeat.open()
         while not self.stopheartthread:
             self.duco_heartbeat.rpc_heartbeat()
-            time.sleep(0.1)
+            self._stop_event.wait(0.1)
         self.duco_heartbeat.close()
 
     def thread_fun(self):
