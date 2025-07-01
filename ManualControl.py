@@ -72,6 +72,7 @@ class system_control:
         self.latest_sensor_data = {"up": -1, "front": -1, "left_side": -1, "right_side": -1}
         self.sensor_subscriber = rospy.Subscriber('/STP23', STP23, self._sensor_callback)
         self.latest_keys = [0] * 32
+        self.last_key_time = time.time()
         self.keys_subscriber = rospy.Subscriber('/key_input', KeyInput, self._keys_callback)
 
         self.emergency_stop_flag = False
@@ -117,11 +118,15 @@ class system_control:
     # 读取/topic中的按键输入
     def _keys_callback(self, msg):
         self.latest_keys = list(msg.keys)
+        self.last_key_time = time.time()
     # 前16个为按钮
     def get_key_input(self):
-        keys = self.latest_keys[:16]
+        if time.time() - self.last_key_time > KEYTIMEOUT:
+            keys = [0] * 16
+        else:
+            keys = self.latest_keys[:16]
         keys_padded = (keys + [0]*16)[:16]
-        return KeyInputStruct(*keys_padded)
+        return KeyInputStruct(*keys_padded) 
     # 16个以后的为需要的信息
     def get_ctrl_msg(self):
         return self.latest_keys[16:]
@@ -381,9 +386,12 @@ class system_control:
             
         except Exception as e:
             print(f"An unexpected error occurred: {e}")
+            self.sysrun = False
+            self.autopaint_flag = False
 
         except KeyboardInterrupt:
             print("KeyboardInterrupt")
             self.sysrun = False
+            self.autopaint_flag = False
         finally:
             self.emergency_thread.join()
