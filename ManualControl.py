@@ -73,6 +73,7 @@ class system_control:
         self.sensor_subscriber = rospy.Subscriber('/STP23', STP23, self._sensor_callback)
         self.latest_keys = [0] * 32
         self.last_key_time = time.time()
+        self.last_sensor_time = time.time()
         self.keys_subscriber = rospy.Subscriber('/key_input', KeyInput, self._keys_callback)
 
         self.emergency_stop_flag = False
@@ -108,7 +109,7 @@ class system_control:
                         self.duco_stop.power_on(True)
                         self.duco_stop.enable(True)
                     self.duco_stop.switch_mode(1)          
-            self._stop_event.wait(0.1)
+            self._stop_event.wait(0.05)
 
     def get_cylinder_param(self):
         # TODO: 获取圆柱圆心坐标及圆柱半径
@@ -140,8 +141,11 @@ class system_control:
             "left": msg.Distance_3,
             "right": msg.Distance_4
         }
+        self.last_sensor_time = time.time()
 
     def get_sensor_data(self):
+        if time.time() - self.last_sensor_time > SENSORTIMEOUT:
+            self.latest_sensor_data = {"up": -1, "front": -1, "left_side": -1, "right_side": -1}
         return self.latest_sensor_data
     
     # 记录当前位置
@@ -192,6 +196,13 @@ class system_control:
             now = time.time()
             dt = now - last_time
             last_time = now
+
+            if sensor_data["front"] == -1:
+                print("front sensor error")
+                tcp_pos = self.duco_cobot.get_tcp_pose()
+                self.duco_cobot.servoj_pose({tcp_pos[0]-0.3, tcp_pos[1], tcp_pos[2] + 0.1, tcp_pos[3], tcp_pos[4], tcp_pos[5]}, self.vel, self.acc, '', '', '', True)
+                self.autopaint_flag = False
+                break
 
             side_count = 0
             side_count_threshold = 7 

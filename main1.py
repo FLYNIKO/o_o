@@ -36,7 +36,7 @@ class DemoApp:
         self.duco_heartbeat.open()
         while not self.stopheartthread:
             self.duco_heartbeat.rpc_heartbeat()
-            self._stop_event.wait(0.1)
+            self._stop_event.wait(1)
         self.duco_heartbeat.close()
 
     def thread_fun(self):
@@ -50,6 +50,7 @@ class DemoApp:
             msg = Float64MultiArray()
             msg.data = tcp_state + tcp_pos
             self.tcp_pub.publish(msg)
+            self._stop_event.wait(1)
         self.duco_thread.close()
 
     def run(self):
