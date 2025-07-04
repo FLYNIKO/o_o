@@ -67,8 +67,13 @@ class system_control:
         self.pid_z = SimplePID(kp=KP, ki=KI, kd=KD)
         self.front_sensor_history = deque(maxlen=5) # 滤波队列
 
+        self.anticrash_up = ANTICRASH_UP
+        self.anticrash_front = ANTICRASH_FRONT
+        self.anticrash_left = ANTICRASH_LEFT
+        self.anticrash_right = ANTICRASH_RIGHT
+
         self.theta_deg = PAINTDEG / 2  # 喷涂角度的一半
-        self.distance_to_cylinder = ANTICRASH_FRONT  # 末端与圆柱表面距离
+        self.distance_to_cylinder = self.anticrash_front  # 末端与圆柱表面距离
         self.painting_width = PAINTWIDTH  # 喷涂宽度
 
         self.latest_sensor_data = {"up": -1, "front": -1, "left_side": -1, "right_side": -1}
@@ -123,12 +128,21 @@ class system_control:
     def _keys_callback(self, msg):
         self.latest_keys = list(msg.keys)
         self.last_key_time = time.time()
+
     # 第一个元素为按钮
     def get_key_input(self):
         if time.time() - self.last_key_time > KEYTIMEOUT:
             key_bits = 0
+            self.anticrash_up = ANTICRASH_UP
+            self.anticrash_front = ANTICRASH_FRONT
+            self.anticrash_left = ANTICRASH_LEFT
+            self.anticrash_right = ANTICRASH_RIGHT
         else:
-             key_bits = self.latest_keys[0]
+            key_bits = self.latest_keys[0]
+            self.anticrash_up = self.latest_keys[1]
+            self.anticrash_front = self.latest_keys[2]
+            self.anticrash_left = self.latest_keys[3]
+            self.anticrash_right = self.latest_keys[4]
         # 按位解析
         return KeyInputStruct(
             x0 = (key_bits >> 0) & 1,
@@ -225,7 +239,7 @@ class system_control:
 
             side_count = 0
             side_count_threshold = 7 
-            while ANTICRASH_LEFT != 0 and sensor_data["left"] < ANTICRASH_LEFT:
+            while self.anticrash_left != 0 and sensor_data["left"] < self.anticrash_left:
                 v2 = self.auto_vel
                 self.duco_cobot.speedl([0, 0, -v2, 0, 0, 0], self.acc, -1, False)
                 time.sleep(0.1)
@@ -238,7 +252,7 @@ class system_control:
                     time.sleep(0.1)
                     sensor_data = self.get_sensor_data()
                     # 检测是否通过梁
-                    while ANTICRASH_UP != 0 and sensor_data["up"] < ANTICRASH_UP:
+                    while self.anticrash_up != 0 and sensor_data["up"] < self.anticrash_up:
                         sensor_data = self.get_sensor_data()
                         time.sleep(0.05)
                     # 通过梁后，回到下降前的最后位置
@@ -247,7 +261,7 @@ class system_control:
             
             # PID with filter
             v2 = 0.0  # x轴默认速度为0
-            if ANTICRASH_FRONT != 0:
+            if self.anticrash_front != 0:
                 # 1. 数据滤波
                 raw_front_dist = sensor_data["front"]
                 if raw_front_dist > 0:  # 确保是有效读数
@@ -257,7 +271,7 @@ class system_control:
                     filtered_front_dist = sum(self.front_sensor_history) / len(self.front_sensor_history)
 
                     # 2. 控制死区
-                    target_dist = ANTICRASH_FRONT
+                    target_dist = self.anticrash_front
                     deadband_threshold = DEADZONE  # 单位: mm, 可根据实际情况调整
                     error = filtered_front_dist - target_dist
 
@@ -287,13 +301,13 @@ class system_control:
             dt = now - last_time
             last_time = now
             # 防撞保护
-            if (ANTICRASH_LEFT != 0 and sensor_data["left"] < ANTICRASH_LEFT) or tcp_pos[1] > 1:
+            if (self.anticrash_left != 0 and sensor_data["left"] < self.anticrash_left) or tcp_pos[1] > 1:
                 print("jobs done")
                 self.duco_cobot.speed_stop(True)
                 break
             # PID with filter
             v2 = 0.0  # x轴默认速度为0
-            if ANTICRASH_FRONT != 0:
+            if self.anticrash_front != 0:
                 # 1. 数据滤波
                 raw_front_dist = sensor_data["front"]
                 if raw_front_dist > 0:  # 确保是有效读数
@@ -303,7 +317,7 @@ class system_control:
                     filtered_front_dist = sum(self.front_sensor_history) / len(self.front_sensor_history)
 
                     # 2. 控制死区
-                    target_dist = ANTICRASH_FRONT
+                    target_dist = self.anticrash_front
                     deadband_threshold = 10  # 单位: mm, 可根据实际情况调整
                     error = filtered_front_dist - target_dist
 

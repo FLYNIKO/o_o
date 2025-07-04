@@ -21,6 +21,7 @@ class DemoApp:
         self.thread = threading.Thread(target=self.thread_fun)
         self.tcp_state = []  
         self.tcp_pub = rospy.Publisher('/Duco_state', Float64MultiArray, queue_size=10)
+        self.sys_ctrl = None 
 
     def robot_connect(self):
         rlt = self.duco_cobot.open()
@@ -46,10 +47,20 @@ class DemoApp:
         while not self.stopheartthread:
             tcp_pos = self.duco_thread.get_tcp_pose()
             tcp_state = self.duco_thread.get_robot_state()
+            if self.sys_ctrl is not None:
+                anticrash_threshold = [
+                    self.sys_ctrl.anticrash_up,
+                    self.sys_ctrl.anticrash_front,
+                    self.sys_ctrl.anticrash_left,
+                    self.sys_ctrl.anticrash_right
+                ]            
+            else:
+                anticrash_threshold = [ANTICRASH_UP, ANTICRASH_FRONT, ANTICRASH_LEFT, ANTICRASH_RIGHT]
+            
             self.tcp_state = tcp_state
             # 发布 ROS topic
             msg = Float64MultiArray()
-            msg.data = tcp_state + tcp_pos
+            msg.data = tcp_state + tcp_pos + anticrash_threshold
             self.tcp_pub.publish(msg)
             self._stop_event.wait(1)
         self.duco_thread.close()
@@ -60,7 +71,8 @@ class DemoApp:
         self.thread.start()
 
         try:
-            system_control(self.duco_cobot, self).run()
+            self.sys_ctrl = system_control(self.duco_cobot, self)
+            self.sys_ctrl.run()
         finally:
             self.stopheartthread = True
             time.sleep(1)
