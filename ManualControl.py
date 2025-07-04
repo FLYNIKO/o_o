@@ -219,9 +219,8 @@ class system_control:
 
             if sensor_data["front"] == -1:
                 print("front sensor error")
-                tcp_pos = self.duco_cobot.get_tcp_pose()
-                self.duco_cobot.servoj_pose({tcp_pos[0]-0.3, tcp_pos[1], tcp_pos[2] + 0.1, tcp_pos[3], tcp_pos[4], tcp_pos[5]}, self.vel, self.acc, '', '', '', True)
                 self.autopaint_flag = False
+                self.duco_cobot.speed_stop(True)
                 break
 
             side_count = 0
