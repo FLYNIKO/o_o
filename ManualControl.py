@@ -12,7 +12,8 @@ from config import *
 class KeyInputStruct:
     def __init__(self, x0=0, x1=0, y0=0, y1=0, z0=0, z1=0,
                  init=0, serv=0, multi=0, start=0,
-                 rx0=0, rx1=0, ry0=0, ry1=0, rz0=0, rz1=0):
+                 rx0=0, rx1=0, ry0=0, ry1=0, rz0=0, rz1=0,
+                 clog=0):
         self.x0 = x0
         self.x1 = x1
         self.y0 = y0
@@ -29,6 +30,7 @@ class KeyInputStruct:
         self.ry1 = ry1
         self.rz0 = rz0
         self.rz1 = rz1
+        self.clog = clog
 
 class SimplePID:
     def __init__(self, kp, ki, kd):
@@ -121,17 +123,35 @@ class system_control:
     def _keys_callback(self, msg):
         self.latest_keys = list(msg.keys)
         self.last_key_time = time.time()
-    # 前16个为按钮
+    # 第一个元素为按钮
     def get_key_input(self):
         if time.time() - self.last_key_time > KEYTIMEOUT:
-            keys = [0] * 16
+            key_bits = 0
         else:
-            keys = self.latest_keys[:16]
-        keys_padded = (keys + [0]*16)[:16]
-        return KeyInputStruct(*keys_padded) 
-    # 16个以后的为需要的信息
+             key_bits = self.latest_keys[0]
+        # 按位解析
+        return KeyInputStruct(
+            x0 = (key_bits >> 0) & 1,
+            x1 = (key_bits >> 1) & 1,
+            y0 = (key_bits >> 2) & 1,
+            y1 = (key_bits >> 3) & 1,
+            z0 = (key_bits >> 4) & 1,
+            z1 = (key_bits >> 5) & 1,
+            init = (key_bits >> 6) & 1,
+            serv = (key_bits >> 7) & 1,
+            multi = (key_bits >> 8) & 1,
+            start = (key_bits >> 9) & 1,
+            rx0 = (key_bits >> 10) & 1,
+            rx1 = (key_bits >> 11) & 1,
+            ry0 = (key_bits >> 12) & 1,
+            ry1 = (key_bits >> 13) & 1,
+            rz0 = (key_bits >> 14) & 1,
+            rz1 = (key_bits >> 15) & 1,
+            clog = (key_bits >> 16) & 1
+        )
+    # 第二个及以后的元素为数据
     def get_ctrl_msg(self):
-        return self.latest_keys[16:]
+        return self.latest_keys[1:]
     
     # 读取/topic中的传感器数据
     def _sensor_callback(self, msg):
@@ -330,30 +350,18 @@ class system_control:
 
                 #机械臂末端向  前
                 elif key_input.x0:
-                    if ANTICRASH_FRONT != 0 and sensor_data["front"] < ANTICRASH_FRONT:
-                        v2 = 0
-                        print("向前移动被防撞保护禁止,front传感器值:", sensor_data.get("front"))
                     self.duco_cobot.speedl([0, 0, v2, 0, 0, 0],self.acc ,-1, False)
                 #机械臂末端向  后
                 elif key_input.x1:
                     self.duco_cobot.speedl([0, 0, -v2, 0, 0, 0],self.acc ,-1, False)
                 #机械臂末端向  右
                 elif key_input.y1:
-                    if ANTICRASH_RIGHT != 0 and sensor_data["right"] < ANTICRASH_RIGHT:
-                        v0 = 0
-                        print("向右移动被防撞保护禁止,right传感器值:", sensor_data.get("right"))
                     self.duco_cobot.speedl([v0, 0, 0, 0, 0, 0], self.acc, -1, False)
                 #机械臂末端向  左
                 elif key_input.y0: 
-                    if ANTICRASH_LEFT != 0 and sensor_data["left"] < ANTICRASH_LEFT:
-                        v0 = 0
-                        print("向左移动被防撞保护禁止,left传感器值:", sensor_data.get("left"))
                     self.duco_cobot.speedl([-v0, 0, 0, 0, 0, 0], self.acc, -1, False)
                 #机械臂末端向  上
                 elif key_input.z1: 
-                    if ANTICRASH_UP != 0 and sensor_data["up"] < ANTICRASH_UP:
-                        v1 = 0
-                        print("向上移动被防撞保护禁止,up传感器值:", sensor_data.get("up"))
                     self.duco_cobot.speedl([0, v1, 0, 0, 0, 0],self.acc ,-1, False)
                 #机械臂末端向  下
                 elif key_input.z0:
